@@ -1,7 +1,6 @@
 package com.ufcity.cep.storage;
 
-import com.ufcity.cep.models.Resource;
-
+import ufcitycore.models.Resource;
 import java.util.Map;
 
 public abstract class Database {
