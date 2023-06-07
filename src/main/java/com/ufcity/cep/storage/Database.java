@@ -7,10 +7,14 @@ public abstract class Database {
 
     private String host;
     private String port;
+    private String username;
+    private String password;
 
-    public Database(String host, String port) {
+    public Database(String host, String port, String username, String password) {
         this.host = host;
         this.port = port;
+        this.username = username;
+        this.password = password;
     }
 
     /* uuid_device & Resource */

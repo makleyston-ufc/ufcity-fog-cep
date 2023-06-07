@@ -1,0 +1,11 @@
+fog-computing:
+  - address: 10.0.0.112
+  - port: 1883
+cloud-computing:
+  - address: 10.0.0.112
+  - port: 1883
+database:
+  - address: mongo
+  - port: 27017
+  - username: root
+  - password: example

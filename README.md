@@ -7,19 +7,24 @@ UFCity CEP is a software component that integrates the UFCity solution for smart
 * Notifies Edge Computing devices for actions in the environment.
 
 ## How to use?
-Create a configuration file `ufcity-cep.config`:
+Create a configuration file `config.yaml`:
 - ./
     - ufcity-cep.jar
-    - ufcity-cep.config
+    - config.yaml
 
 Example of a `ufcity-cep.config` file:
 ```
---fog-address: 172.23.0.4
---cloud-address: 172.23.0.5
---fog-port: 1883
---cloud-port: 1883
---database-address: mongo
---database-port: 27017
+fog-computing:
+  - address: 10.0.0.112
+  - port: 1883
+cloud-computing:
+  - address: 10.0.0.112
+  - port: 1883
+database:
+  - address: mongo
+  - port: 27017
+  - username: root
+  - password: example
 ```
 
 Note: Into the Docker environment can use the hostname instead IP.

@@ -1,25 +1,23 @@
 package com.ufcity.cep;
-import com.espertech.esper.client.*;
 
+import com.espertech.esper.client.*;
 import com.google.gson.Gson;
 import com.ufcity.cep.cep.Listener;
+import com.ufcity.cep.model.Resource;
 import com.ufcity.cep.queue.ResultQueue;
 import com.ufcity.cep.storage.Database;
-import com.ufcity.cep.storage.MongoDB;
 import org.eclipse.paho.client.mqttv3.MqttException;
-import ufcitycore.models.Resource;
 import ufcitycore.mqtt.ConnectionConfig;
 import ufcitycore.mqtt.Publish;
 import ufcitycore.mqtt.Subscribe;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 
-import static com.ufcity.cep.Menu.ReaderConfig;
+import static ufcitycore.config.Config.ReaderYAMLConfig;
 import static ufcitycore.mqtt.ConnectionData.*;
 
 public class Main {
-    static String MONGO_DB_HOST;
-    static String MONGO_DB_PORT;
     static String uuidItself = UUID.randomUUID().toString();
     /* GSON */
     static Gson gson = new Gson();
@@ -31,15 +29,19 @@ public class Main {
 
     public static void main(String[] args) throws IOException, MqttException {
 
-        if (args.length == 0)
-            if (Menu.check(ReaderConfig()) != 0) return;
+        try {
+            ReaderYAMLConfig(new Config());
+        } catch (FileNotFoundException e) {
+            System.err.println("Configuration file not found or not properly written!");
+            throw new RuntimeException(e);
+        }
 
         /* Check the uuid_fog on MongoDB */
         uuidItself = database.setOrGetFogUUIDFog(uuidItself);
 
         /* EsperCEP */
         Configuration cepConfig = new Configuration();
-        cepConfig.addEventType("Resource", Resource.class);
+        cepConfig.addEventType("Resource", com.ufcity.cep.model.Resource.class);
 
         // Create an instance of the EPServiceProvider
         cep = EPServiceProviderManager.getDefaultProvider(cepConfig);
@@ -53,23 +55,23 @@ public class Main {
         connectionConfigSubCEP.setTopics(getResourceDataSubscribeTopic());
         Subscribe subscribeCEP = new Subscribe(connectionConfigSubCEP);
         subscribeCEP.subscribe((topic, message) -> {
-            System.out.println("## Received message from Edge Computing: ");
             System.out.println("## Topic: "+topic+", Message: "+message);
             String[] topicSep = topic.split("/");
             String firstLevelTopic = topicSep[0];
-            switch (firstLevelTopic) {
-                /* device/[uuid_device] -> json */
-                case EDGE_RESOURCES_DATA_SUBSCRIBE -> sendCEP(message);
+            String uuidDevice = topicSep[1];
+            /* resource_data/[uuid_device]/[uuid_resource]			-> resource_json */
+            if (firstLevelTopic.equals(EDGE_RESOURCES_DATA_SUBSCRIBE)) {
+                sendCEP(uuidDevice, message);
             }
         });
 
         /*  Initializing the MQTT Broker for edge communication. */
         System.out.println("### Cloud MQTT Broker ###");
-        ConnectionConfig connectionConfigSubCloud = new ConnectionConfig(HOST_CLOUD, PORT_CLOUD);
+        ConnectionConfig connectionConfigSubCloud = new ConnectionConfig(CLOUD_HOST, CLOUD_PORT);
         connectionConfigSubCloud.setTopics(getCEPSubscribeTopics(uuidItself));
         Subscribe subscribeCloud = new Subscribe(connectionConfigSubCloud);
         subscribeCloud.subscribe((topic, message) -> {
-            System.out.println("## Received message from Cloud Computing: ");
+//            System.out.println("## Received message from Cloud Computing: ");
             System.out.println("## Topic: "+topic+", Message: "+message);
             String[] topicSep = topic.split("/");
             String firstLevelTopic = topicSep[0];
@@ -80,21 +82,16 @@ public class Main {
         });
 
         Thread publishThread = new Thread(new Runnable() {
-            final Database mongoDB = new MongoDB(MONGO_DB_HOST, MONGO_DB_PORT);
             @Override
             public void run() {
+                ConnectionConfig connectionConfigPubEdge = new ConnectionConfig(INNER_HOST, INNER_PORT);
                 for (int i = 0; i < ResultQueue.size(); i++){
-                    Map<String, String> r = ResultQueue.getAndRemove();
-                    if(r != null){
-                        Map<String, Resource> result = findResourceInStorage(r.get("uuid_device"), r.get("uuid_resource"), r.get("uuid_service"), r.get("action"));
-                        String uuid_device = (String) result.keySet().toArray()[0];
-                        Resource resource = result.get(uuid_device);
-
-                        ConnectionConfig connectionConfigPubEdge = new ConnectionConfig(INNER_HOST, INNER_PORT);
-                        connectionConfigPubEdge.setTopics(getCommandsToEdge(uuid_device));
+                    Resource resource = ResultQueue.getAndRemove();
+                    if(resource != null){
+                        connectionConfigPubEdge.setTopics(getCommandsToEdge(resource.getUuid_device()));
                         Publish publish = new Publish(connectionConfigPubEdge);
-
-                        publish.publish(resource.toJson());
+                        ufcitycore.models.Resource r = resource;
+                        publish.publish(r.toJson());
                     }
                 }
                 try {
@@ -104,12 +101,7 @@ public class Main {
                 }
             }
 
-            private Map<String, Resource> findResourceInStorage(String uuidDevice, String uuidResource, String uuidService, String action) {
-                return mongoDB.find(uuidDevice, uuidResource, uuidService);
-            }
         });
-
-
     }
 
     private static void addEPL(String epl) {
@@ -129,10 +121,11 @@ public class Main {
         System.out.println(">> EPL removed successfully!");
     }
 
-    private static void sendCEP(String resourceJson) {
+    private static void sendCEP(String uuidDevice, String resourceJson) {
         try{
             /*  Convert message to Object */
-            Resource resource = gson.fromJson(resourceJson, Resource.class);
+            com.ufcity.cep.model.Resource resource = gson.fromJson(resourceJson, com.ufcity.cep.model.Resource.class);
+            resource.setUuid_device(uuidDevice);
             /* Send events to the EPServiceProvider */
             cep.getEPRuntime().sendEvent(resource);
         }catch (Exception e){

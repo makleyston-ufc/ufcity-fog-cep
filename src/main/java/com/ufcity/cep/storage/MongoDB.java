@@ -19,9 +19,9 @@ public class MongoDB extends Database{
     MongoDatabase database;
     MongoCollection<Document> collectionDevices;
 
-    public MongoDB(String host, String port) {
-        super(host, port);
-        mongoClient = MongoClients.create("mongodb://root:example@"+host+":"+port);
+    public MongoDB(String host, String port, String username, String password) {
+        super(host, port, username, password);
+        mongoClient = MongoClients.create("mongodb://"+username+":"+password+"@"+host+":"+port);
         database = mongoClient.getDatabase("ufcity");
         collectionDevices = database.getCollection("devices");
     }
